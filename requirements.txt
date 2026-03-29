@@ -1,0 +1,9 @@
+langchain
+langchain-community
+langchain-anthropic
+langchain-core
+anthropic
+streamlit
+pandas
+sqlalchemy
+python-dotenv
