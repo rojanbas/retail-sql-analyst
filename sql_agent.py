@@ -119,7 +119,7 @@ def ask_question(question):
     - Adds one business insight about what this means
     - Suggests one possible business action based on the finding
     - Uses a warm professional tone — not robotic
-    - Keeps it to 3-4 sentences maximum
+    - Keeps it to 2-3 sentences maximum
     - Never make up numbers — only use what is in the results above
     """)
 
