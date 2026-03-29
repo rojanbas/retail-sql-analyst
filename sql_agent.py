@@ -35,9 +35,8 @@ def run_sql(sql_query):
 def ask_question(question):
     db = get_database()
 
-    # Groq instead of Ollama — free and fast
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",   # free LLaMA 3 model via Groq
+        model="llama-3.3-70b-versatile",
         temperature=0,
         api_key=os.getenv("GROQ_API_KEY")
     )
@@ -46,22 +45,39 @@ def ask_question(question):
 
     # Step 1: Generate SQL
     sql_prompt = PromptTemplate.from_template("""
-    You are a SQL expert working with a retail database.
-    Write a SQLite SQL query to answer the question below.
-    Return ONLY the raw SQL query. No explanation. No markdown. No backticks.
+    You are an expert SQLite SQL writer for a retail database.
+    Your job is to write ONE correct SQL query to answer the question.
+    Return ONLY the raw SQL query — no explanation, no markdown, no backticks.
 
-    STRICT RULES:
-    - ALWAYS use O as alias for ORDERS, C as alias for COUNTRIES
-    - ALWAYS use C.COUNTRY_NAME and COUNT(O.ORDER_ID) as total
-    - ALWAYS use GROUP BY C.COUNTRY_ID
-    - ALWAYS end with ORDER BY total DESC LIMIT 1 for most questions
-    - ALWAYS end with ORDER BY total ASC LIMIT 1 for least questions
-    - For revenue use SUM(O.TOTAL_AMOUNT) as total
-    - For joins: FROM ORDERS O JOIN COUNTRIES C ON C.COUNTRY_ID = O.COUNTRY_ID
-    - ALWAYS SELECT both the label AND the number together
-    - ALWAYS use table aliases to avoid ambiguous column names
+    GENERAL RULES:
+    - Always use table aliases to avoid ambiguous column names
+    - Always SELECT both the label and the value/count together
+    - For counting use COUNT(), for totals use SUM()
+    - For "most" use ORDER BY ... DESC LIMIT 1
+    - For "least" use ORDER BY ... ASC LIMIT 1
+    - For "top N" use ORDER BY ... DESC LIMIT N
+    - For listing all use no LIMIT
+    - Always qualify column names with their table alias
 
-    Table structure:
+    TABLE RELATIONSHIPS:
+    - ORDERS links to COUNTRIES via COUNTRY_ID
+    - ORDERS links to CUSTOMERS via CUSTOMER_ID
+    - ORDER_ITEMS links to ORDERS via ORDER_ID
+    - ORDER_ITEMS links to PRODUCTS via PRODUCT_CODE
+    - PAYMENTS links to ORDERS via ORDER_ID
+    - SHIPPING links to ORDERS via ORDER_ID
+
+    KEY COLUMNS:
+    - Revenue/Amount: ORDERS.TOTAL_AMOUNT
+    - Order count: COUNT(ORDERS.ORDER_ID)
+    - Product name: PRODUCTS.DESCRIPTION
+    - Country name: COUNTRIES.COUNTRY_NAME
+    - Payment type: PAYMENTS.PAYMENT_TYPE
+    - Carrier: SHIPPING.CARRIER
+    - Order status: ORDERS.STATUS
+    - Payment status: PAYMENTS.STATUS
+
+    Database schema:
     {table_info}
 
     Question: {question}
@@ -75,7 +91,7 @@ def ask_question(question):
         "question": question
     })
 
-    # Clean up
+    # Clean up any markdown
     sql_query = sql_query.strip()
     for marker in ["```sql", "```SQL", "```"]:
         sql_query = sql_query.replace(marker, "")
@@ -88,11 +104,11 @@ def ask_question(question):
 
     if results is None:
         print(f"\nSQL Error: {columns}")
-        return "Could not run the query.", sql_query
+        return "Sorry, I could not run that query. Please try rephrasing.", sql_query
 
     print(f"\nRaw Results: {results}")
 
-    # Step 3: Format results
+    # Step 3: Format results clearly
     if results:
         formatted = "\n".join([
             ", ".join([f"{columns[i]}: {row[i]}"
@@ -104,23 +120,21 @@ def ask_question(question):
 
     print(f"\nFormatted Results:\n{formatted}")
 
-    # Step 4: Generate plain English answer
+    # Step 4: Generate business answer
     answer_prompt = PromptTemplate.from_template("""
-    You are a friendly and insightful retail business analyst presenting
-    findings to a business executive.
+    You are a friendly retail business analyst presenting findings to an executive.
 
-    Question: {question}
+    Question asked: {question}
 
-    Exact database results:
+    Exact results from the database:
     {formatted_results}
 
-    Write a response that:
-    - Starts with the direct answer using the exact numbers
+    Write a 2-3 sentence response that:
+    - Directly answers the question using the EXACT numbers from the results above
     - Adds one business insight about what this means
-    - Suggests one possible business action based on the finding
-    - Uses a warm professional tone — not robotic
-    - Keeps it to 2-3 sentences maximum
-    - Never make up numbers — only use what is in the results above
+    - Suggests one action the business could take
+    - Uses a warm professional tone
+    - NEVER makes up numbers — only use what is shown in the results
     """)
 
     answer_chain = answer_prompt | llm | StrOutputParser()
@@ -133,7 +147,17 @@ def ask_question(question):
 
 
 if __name__ == "__main__":
-    print("Testing with Groq API...")
-    answer, sql = ask_question("Which country had the most orders?")
-    print("\nFinal Answer:")
-    print(answer)
+    # Test multiple different questions
+    questions = [
+        "Which country had the most orders?",
+        "What is the most common payment type?",
+        "How many orders were cancelled?",
+        "What are the top 3 most expensive products?",
+        "Which carrier shipped the most orders?"
+    ]
+
+    for q in questions:
+        print(f"\n{'='*50}")
+        print(f"Question: {q}")
+        answer, sql = ask_question(q)
+        print(f"\nAnswer: {answer}")
